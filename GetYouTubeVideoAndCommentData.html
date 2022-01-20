@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+
+  <script src=
+    "http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js">
+  </script>
+
+  <script src=
+    "https://unpkg.com/react@15/dist/react.min.js">
+  </script>
+  <script src=
+    "https://unpkg.com/react-dom@15/dist/react-dom.min.js">
+  </script>
+  <script src=
+    "https://cdnjs.cloudflare.com/ajax/libs/babel-core/5.8.38/browser.min.js">
+  </script>
+
+</head>
+<style>
+  table.dispTable, th, td {
+    border: 1px solid cyan;
+  }
+</style>
+<body>
+
+  <div id="root"></div>
+  <script type="text/babel">
+
+    const _VIDEO_   = 0
+    const _COMMENT_ = 1
+
+    const _INFO_NONE_ = 0
+    const _INFO_EXEC_ = 1
+    const _INFO_ZERO_ = 2
+
+    const HTTP_GET = {
+      method: "get"
+    }
+
+    const FIXED_PATH = "https://www.googleapis.com/youtube/v3"
+
+    var __INPUT_ID__ = ""
+    var __API_KEY__  = ""
+
+
+    function getStart(arg) {
+
+      return new Promise( function(resolve, reject) {
+
+        setTimeout( function() {
+
+          arg.setState({info: _INFO_EXEC_})
+
+          resolve()
+
+        }, 0)
+      })
+    }
+
+    function getChannels() {
+
+      return new Promise( function(resolve, reject) {
+
+        setTimeout( function() {
+
+            var url = FIXED_PATH 
+                    + "/channels?"
+                    + "&part=contentDetails"
+                    + "&maxResults=100"
+                    + "&id="  + __INPUT_ID__
+                    + "&key=" + __API_KEY__
+
+            fetch(url, HTTP_GET)
+            .then( res => {
+              resolve( res.json() )
+            })
+            .catch( err => {
+              window.alert(err)
+            })
+        }, 0)
+      })
+    }
+
+    function getPlayListItems(arg) {
+
+      return new Promise( function(resolve, reject) {
+
+        setTimeout( function() {
+
+          var result = []
+          if(arg.items) {
+            var playlistId = arg.items[0].contentDetails.relatedPlaylists.uploads
+            resolve( getPlayListItems_sub(playlistId, "", result) )
+          } else {
+            resolve(result)
+          }
+
+        }, 0)
+      })
+    }
+
+
+    function getPlayListItems_sub(playlistId, nextPageToken, result) {
+
+      return new Promise( function(resolve, reject) {
+
+        setTimeout( function() {
+
+          var url = FIXED_PATH
+                  + "/playlistItems?"
+                  + "&part=snippet"
+                  + "&maxResults=100"
+                  + "&playlistId="+ playlistId
+                  + "&pageToken=" + nextPageToken
+                  + "&key=" + __API_KEY__
+
+          fetch(url, HTTP_GET)
+          .then( res => {
+            resolve( res.json() )
+          })
+          .catch( err => {
+            window.alert(err)
+          })
+              
+        }, 0)
+
+      }).then( function(res_json) {
+
+        result.push( res_json.items )
+
+        if (res_json.nextPageToken) {
+          // nextPageTokenが存在する場合、再帰でループ。
+          return getPlayListItems_sub(playlistId, res_json.nextPageToken, result)
+        }
+        // nextPageTokenが存在しない場合、ループ終了。
+
+        return result
+      })
+    }
+
+    function getVideos(arg) {
+
+      return new Promise( function(resolve, reject) {
+
+        setTimeout( function() {
+
+          var ret = []
+          var lock = []
+
+          for (var i = 0; i < arg.length; i++) {
+
+            var item_arr = arg[i]
+
+            if (!item_arr) {
+              continue
+            }
+
+            for (var j = 0; j < item_arr.length; j++ ) {
+
+              var videoId = item_arr[j].snippet.resourceId.videoId
+
+              var url = FIXED_PATH
+                      + "/videos?"
+                      + "&part=snippet,contentDetails,statistics,status"
+                      + "&maxResults=100"
+                      + "&id="  + videoId 
+                      + "&key=" + __API_KEY__
+
+              lock.push(
+
+                fetch(url, HTTP_GET)
+                .then( res => {
+                  return res.json()
+                })
+                .then( res_json => {
+                  ret.push( res_json.items[0] )
+                })
+                .catch( err => {
+                  window.alert( err )
+                })
+              )
+
+            }
+
+          }
+
+          Promise.all(lock).then(function(){
+            resolve(ret)
+          })
+
+        }, 0)
+      })
+    }
+
+    function getComments(arg) {
+
+      return new Promise( function(resolve, reject) {
+
+        setTimeout( function() {
+
+          var result = []
+
+          if(arg) {
+            resolve( getComments_sub(arg, "", result) )
+          } else {
+            resolve(result)
+          }
+        }, 0)
+      })
+    }
+
+    function getComments_sub(videoId, nextPageToken, result) {
+
+      return new Promise( function(resolve, reject) {
+
+        setTimeout( function() {
+
+          var url = FIXED_PATH
+                  + "/commentThreads?"
+                  + "&part=snippet"
+                  + "&maxResults=100" 
+                  + "&pageToken=" + nextPageToken
+                  + "&videoId=" + videoId
+                  + "&key=" + __API_KEY__
+
+          fetch(url, HTTP_GET)
+          .then( res => {
+            return res.json()
+          })
+          .then(getReplies)
+          .then( data => {
+            resolve(data)
+          })
+          .catch( err => {
+            window.alert(err)
+          })
+
+        }, 0)
+
+      }).then( function(res_data) {
+
+        var data = res_data["data"]
+        var nextPageToken = res_data["nextPageToken"]
+
+        if (data) {
+          for (var i = 0, len = data.length; i < len; i++) {
+            result.push( data[i] )
+          }
+        }
+
+        if (nextPageToken) {
+          // nextPageTokenが存在する場合、ループ。
+          return getComments_sub(videoId, nextPageToken, result)
+        }
+
+        // nextPageTokenが存在しない場合、ループ終了。
+
+        return result
+      })
+    }
+
+    function getReplies(arg) {
+
+      return new Promise( function(resolve, reject) {
+
+        setTimeout( function() {
+
+          var ret = []
+          var lock = []
+
+          if(arg.items) {
+            for(var i = 0; i < arg.items.length; i++) {
+              lock.push(
+                getReplies_sub(arg.items[i], [], "")
+                .then(data=>{ret.push(data)})
+              )
+            }
+
+            Promise.all(lock).then(function(){
+              resolve( {data: ret, nextPageToken: arg.nextPageToken} )
+            })
+          } else {
+            resolve( {data: ret, nextPageToken: arg.nextPageToken} )
+          }
+
+        }, 0)
+      })
+    }
+
+    function getReplies_sub(parent, children, nextPageToken) {
+
+      return new Promise( function(resolve, reject) {
+
+        setTimeout( function() {
+
+          var url = FIXED_PATH
+                    + "/comments?"
+                    + "&part=snippet"
+                    + "&maxResults=100"
+                    + "&pageToken=" + nextPageToken
+                    + "&videoId="  + parent.snippet.videoId
+                    + "&parentId=" + parent.snippet.topLevelComment.id
+                    + "&key=" + __API_KEY__
+
+          fetch(url, HTTP_GET)
+          .then( res => {
+            return res.json()
+          })
+          .then( res_json => {
+            resolve( res_json )
+          })
+          .catch( err => {
+            window.alert(err)
+          })
+
+        }, 0)
+
+      }).then( function(result) {
+
+        for (var i = 0, len = result.items.length; i < len; i++) {
+          children.push( result.items[i] )
+        }
+
+        if (result.nextPageToken) {
+          // nextPageTokenが存在する場合、ループ。
+          return getReplies_sub(parent, children, result.nextPageToken)
+        }
+
+        // nextPageTokenが存在しない場合、ループ終了。
+        return { parent: parent, children: children }
+      })
+    }
+
+    function download(content, filename) {
+      // create a temporary "a" element.
+      const a = document.createElement("a")
+      document.body.appendChild(a)
+      a.style = "display:none"
+      const blob = new Blob([content], { type: "octet/stream; charset: UTF-8" })
+      const url = window.URL.createObjectURL(blob)
+      a.href = url
+      a.download = filename
+      a.click()
+      window.URL.revokeObjectURL(url) 
+      a.parentNode.removeChild(a)
+    }
+
+    class TAKESHI extends React.Component {
+
+      constructor(props) {
+        super(props)
+        this.state = {   video_data: []
+                       , comment_data: []
+                       , info: _INFO_NONE_
+                       , radio: 'video'
+                       , search_id_name: "CHANNEL_ID"
+                       , serach_id: ""
+                       , channel_id: ""
+                       , video_id: ""
+                       , api_key: "" 
+                     }
+      }
+
+      init(iid, key) {
+
+        if(this.state.radio === 'video') {
+          this.setState({ video_data: [],  })
+        } else if(this.state.radio === 'comment') {
+          this.setState({ comment_data: [],})
+        }
+
+        __INPUT_ID__ = iid
+        __API_KEY__  = key
+      }
+
+      makefile(arg) {
+
+        var filename = __INPUT_ID__ + ".txt"
+
+        const csv_data = (arg) => {
+
+          if(arg == _VIDEO_) {
+
+            filename = "VIDEO_" + filename
+
+            return this.state.video_data.map( (item,idx) => {
+
+              const n = idx == 0 ? "\"" : "\n\""
+
+              return     n  + item.id
+                     +  "\",\"" + item.snippet.title
+                     +  "\",\"" + item.statistics.viewCount
+                     +  "\",\"" + item.statistics.likeCount
+                     +  "\",\"" + item.statistics.dislikeCount
+                     +  "\",\"" + item.statistics.commentCount
+                     +  "\""
+
+            }) + ","
+          } else if(arg == _COMMENT_) {
+
+            filename = "COMMENT_" + filename
+
+            return this.state.comment_data.map( (item, idx) => {
+
+
+                  const n = idx == 0 ? "\"" : "\n\""
+
+                  var var1 =   n   
+                        + item["parent"].snippet.topLevelComment.snippet.textOriginal
+                        +  "\",\""
+                        + item["parent"].snippet.topLevelComment.snippet.likeCount
+                        +  "\""
+
+                  var var2 = item["children"].map(child => {
+                                     return    "\n\"" 
+                                            + child.snippet.textOriginal
+                                            +  "\",\""
+                                            + child.snippet.likeCount
+                                            +  "\""
+                                   })
+
+                  var ret = item["children"].length > 0 ? [var1, var2] : var1
+
+                  return ret
+
+            }) + ","
+          }
+        }
+
+        download(csv_data(arg), filename)
+      }
+
+      push_me(e, iid, key) {
+
+        // 検索実行中は再実行不可にする
+        if (this.state.info == _INFO_EXEC_) {
+          return
+        }
+
+        this.init(iid, key)
+
+        var myPromise = Promise.resolve()
+
+        if(this.state.radio === 'video') {
+          myPromise = myPromise
+          .then(getStart.bind(this, this))
+          .then(getChannels)
+          .then(getPlayListItems)
+          .then(getVideos)
+          .then(data => {
+            if (data.length > 0) {
+              this.setState({ info: _INFO_NONE_ })
+              this.setState({ video_data: data })
+              this.makefile(_VIDEO_)
+            } else {
+              this.setState({ info: _INFO_ZERO_ })
+            }
+          })
+          .catch(err => {
+            this.setState({ info: _INFO_NONE_ })
+            window.alert('ERROR!!: ' + err)
+          })
+          .finally(() => {
+          })
+
+        } else if(this.state.radio === 'comment') {
+          myPromise = myPromise
+          .then(getStart.bind(this, this))
+          .then(getComments.bind(this, this.state.search_id))
+          .then(data => {
+            if (data.length > 0) {
+              this.setState({ info: _INFO_NONE_ })
+              this.setState({ comment_data: data })
+              this.makefile(_COMMENT_)
+            } else {
+              this.setState({ info: _INFO_ZERO_ })
+            }
+          })
+          .catch(err => {
+            this.setState({ info: _INFO_NONE_ })
+            window.alert('ERROR!!: ' + err)
+          })
+        }
+      }
+
+      chgRadio(arg_radio) {
+
+        // 検索実行中はラジオボタン動作不可にする
+        if (this.state.info != _INFO_EXEC_) {
+          if (arg_radio == _VIDEO_) {
+            this.setState( {  radio: 'video'
+                             ,info: _INFO_NONE_
+                             ,search_id_name: "CHANNEL_ID"
+                             ,search_id: this.state.channel_id,
+                           } )
+          } else if (arg_radio == _COMMENT_) {
+            this.setState( {   radio: 'comment'
+                             , info: _INFO_NONE_
+                             , search_id_name: "VIDEO_ID"
+                             , search_id: this.state.video_id
+                           } )
+          }
+        }
+      }
+
+      linkVideoId(arg_id) {
+        // 検索実行中はリンク不可にする
+        if (this.state.info != _INFO_EXEC_) {
+          this.setState( {   radio: 'comment'
+                           , search_id_name: "VIDEO_ID"
+                           , search_id: arg_id
+                           , video_id: arg_id
+                         } )
+                         
+          // 画面一番上にスクロール
+          scrollTo(0, 0)
+        }
+      }
+
+      chgSearchId (e) {
+
+        if(this.state.radio === 'video') {
+          this.setState( {search_id: e.target.value, channel_id: e.target.value,} )
+        } else if(this.state.radio === 'comment') {
+          this.setState( {search_id: e.target.value, video_id: e.target.value} )
+        }
+      }
+
+      chgApiKey (e) {
+
+        this.setState( {api_key: e.target.value, } )
+      }
+
+      forceRelease () {
+
+        this.setState( {info: _INFO_NONE_, } )
+      }
+
+      render() {
+
+        const disp_header = () => {
+
+          var ret
+
+          if(this.state.radio === 'video') {
+            ret = 
+                   <tr>
+                     <th>VIDEO_ID</th>
+                     <th>タイトル</th>
+                     <th>視聴回数</th>
+                     <th>高評価の数</th>
+                     <th>低評価の数</th>
+                     <th>コメント数</th>
+                    </tr>
+
+          } else if(this.state.radio === 'comment') {
+            ret = 
+                   <tr>
+                     <th>コメント</th>
+                     <th>好評価数</th>
+                   </tr>
+          }
+
+          return ret
+        }
+
+        const disp_data = () => {
+
+          if(this.state.radio === 'video') {
+
+            return  <table className="dispTable">
+                    {disp_header()}
+                    {
+                      this.state.video_data.map(item => {
+
+                        return <tr>
+                                 <td><a href="javascript:void(0);" 
+                                       onClick={() => this.linkVideoId(item.id)}>
+                                       {item.id}
+                                 </a></td>
+                                 <td>{item.snippet.title}</td>
+                                 <td>{item.statistics.viewCount}</td>
+                                 <td>{item.statistics.likeCount}</td>
+                                 <td>{item.statistics.dislikeCount}</td>
+                                 <td>{item.statistics.commentCount}</td>
+                               </tr>
+                      })
+                    }
+                    </table>
+
+          } else if(this.state.radio === 'comment') {
+
+            return  <table className="dispTable">
+                    {disp_header()}
+                    {
+                      this.state.comment_data.map(item => {
+
+                        var var1= <tr>
+                                   <td>{item["parent"].snippet.topLevelComment.snippet.textOriginal}</td>
+                                   <td>{item["parent"].snippet.topLevelComment.snippet.likeCount}</td>
+                                  </tr>
+
+                        var var2 = item["children"].map(child => {
+                                     return <tr>
+                                              <td>{child.snippet.textOriginal}</td>
+                                              <td>{child.snippet.likeCount}</td>
+                                            </tr>
+                                   })
+                        return [var1, var2]
+                               
+                      })
+                    }
+                    </table>
+          }
+        }
+
+        const disp_info = () => {
+
+          var ret = ""
+
+          if (this.state.info == _INFO_ZERO_) {
+            ret = <b>
+                    <font color="#FF0000">　０件です!!</font>
+                  </b>
+          } else if (this.state.info == _INFO_EXEC_) {
+            ret = <label onClick={() => this.forceRelease()}>
+                    <b><font color="#000000">　検索中…</font></b>
+                  </label>
+          }
+
+          return ret
+        }
+
+        return (
+          <div>
+            <input type="text" placeholder={this.state.search_id_name}
+                   value={this.state.search_id}
+                   onChange={e => this.chgSearchId(e)}
+                   size="50"
+                   id="in_search_id"/>
+            <br/>
+            <input type="text" placeholder="GOOGLE_API_KEY"
+                   value={this.state.api_key}
+                   onChange={e => this.chgApiKey(e)}
+                   size="50"
+                   id="in_api_key"/>
+            <br/>
+            <input type="radio"
+                   value="radio_video"
+                   checked={this.state.radio === 'video'}
+                   onChange={() => this.chgRadio(_VIDEO_)}/>
+            <label>VIDEO DATA</label>
+            <br/>
+            <input type="radio"
+                   value="radio_comment"
+                   checked={this.state.radio === 'comment'}
+              onChange={() => this.chgRadio(_COMMENT_)}/>
+            <label>COMMENT DATA</label>
+            <br/>
+            <button onClick={
+                e => this.push_me(
+                       e, 
+                       document.getElementById('in_search_id').value,
+                       document.getElementById('in_api_key').value
+                     )
+            }>PUSH ME</button>
+            {disp_info()}
+            <br/>
+            {disp_data()}
+          </div>
+        )
+      }
+    }
+
+    ReactDOM.render(
+      <TAKESHI />
+      , document.getElementById('root')
+    )
+  </script>
+
+</body>
+</html>
